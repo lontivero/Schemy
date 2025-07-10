@@ -9,8 +9,6 @@ using System.Linq;
 using System.Net;
 using System.Net.Sockets;
 using System.Reflection;
-using System.Text;
-using System.Threading.Tasks;
 using Schemy;
 
 namespace Examples.command_server
@@ -31,76 +29,72 @@ namespace Examples.command_server
                 { Symbol.FromString("truncate-string"), NativeProcedure.Create<int, Function>(len => input => ((string)input).Substring(0, len)) },
             };
 
-            var interpreter = new Interpreter(new[] { extension }, new ReadOnlyFileSystemAccessor());
+            var interpreter = new Interpreter(new[] { extension });
 
             if (args.Contains("--repl")) // start the REPL with all implemented functions
             {
                 interpreter.REPL(Console.In, Console.Out);
                 return;
             }
-            else
+
+            // starts a TCP server that receives request (cmd <data>) and sends response back.
+            var engines = new Dictionary<string, Function>();
+            foreach (var fn in Directory.GetFiles(Path.GetDirectoryName(Assembly.GetEntryAssembly().Location), "*.ss"))
             {
-                // starts a TCP server that receives request (cmd <data>) and sends response back.
-                var engines = new Dictionary<string, Function>();
-                foreach (var fn in Directory.GetFiles(Path.GetDirectoryName(Assembly.GetEntryAssembly().Location), "*.ss"))
-                {
-                    Console.WriteLine($"Loading file {fn}");
-                    LoadScript(interpreter, fn);
-                    engines[Path.GetFileNameWithoutExtension(fn)] = (Function)interpreter.Environment[Symbol.FromString("EXECUTE")];
-                }
+                Console.WriteLine($"Loading file {fn}");
+                LoadScript(interpreter, fn);
+                engines[Path.GetFileNameWithoutExtension(fn)] = (Function)interpreter.Environment[Symbol.FromString("EXECUTE")];
+            }
 
-                string ip = "127.0.0.1"; int port = 8080;
-                var server = new TcpListener(IPAddress.Parse(ip), port);
-                server.Start();
-                Console.WriteLine($"Server started at {ip}:{port}");
+            string ip = "127.0.0.1"; int port = 8080;
+            var server = new TcpListener(IPAddress.Parse(ip), port);
+            server.Start();
+            Console.WriteLine($"Server started at {ip}:{port}");
 
-                try
+            try
+            {
+                using (var c = server.AcceptTcpClient())
+                using (var cs = c.GetStream())
+                using (var sr = new StreamReader(cs))
+                using (var sw = new StreamWriter(cs))
                 {
-                    using (var c = server.AcceptTcpClient())
-                    using (var cs = c.GetStream())
-                    using (var sr = new StreamReader(cs))
-                    using (var sw = new StreamWriter(cs))
+                    Console.WriteLine($"Client accepted at {c.Client.RemoteEndPoint}");
+                    while (!sr.EndOfStream)
                     {
-                        Console.WriteLine($"Client accepted at {c.Client.RemoteEndPoint}");
-                        while (!sr.EndOfStream)
+                        string line = sr.ReadLine();
+                        string[] parsed = line.Split(new[] { ' ' }, 2);
+                        if (parsed.Length != 2)
                         {
-                            string line = sr.ReadLine();
-                            string[] parsed = line.Split(new[] { ' ' }, 2);
-                            if (parsed.Length != 2)
+                            sw.WriteLine($"cannot parse {line}");
+                            sw.Flush();
+                        }
+                        else
+                        {
+                            string engine = parsed[0], request = parsed[1];
+                            if (!engines.ContainsKey(engine))
                             {
-                                sw.WriteLine($"cannot parse {line}");
+                                sw.WriteLine($"engine not found: {engine}");
                                 sw.Flush();
                             }
                             else
                             {
-                                string engine = parsed[0], request = parsed[1];
-                                if (!engines.ContainsKey(engine))
-                                {
-                                    sw.WriteLine($"engine not found: {engine}");
-                                    sw.Flush();
-                                }
-                                else
-                                {
-                                    string output = (string)(engines[engine](request));
-                                    sw.WriteLine(output);
-                                    sw.Flush();
-                                }
+                                string output = (string)(engines[engine](request));
+                                sw.WriteLine(output);
+                                sw.Flush();
                             }
                         }
                     }
                 }
-                catch (IOException) { }
             }
+            catch (IOException) { }
         }
 
         static void LoadScript(Interpreter interpreter, string file)
         {
-            using (Stream script = File.OpenRead(file))
-            using (TextReader reader = new StreamReader(script))
-            {
-                var res = interpreter.Evaluate(reader);
-                if (res.Error != null) throw res.Error;
-            }
+            using Stream script = File.OpenRead(file);
+            using TextReader reader = new StreamReader(script);
+            var res = interpreter.Evaluate(reader);
+            if (res.Error != null) throw res.Error;
         }
 
         // support: windows, freebsd, linux, unknown
@@ -126,10 +120,8 @@ namespace Examples.command_server
         
         static string GetUrl(string url)
         {
-            using (var wc = new System.Net.WebClient())
-            {
-                return wc.DownloadString(url);
-            }
+            using var wc = new HttpClient();
+            return wc.GetStringAsync(url, CancellationToken.None).GetAwaiter().GetResult();
         }
     }
 }
