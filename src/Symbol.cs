@@ -16,13 +16,26 @@ public record Symbol(string Sym)
     private static readonly IDictionary<string, Symbol> Table = new Dictionary<string, Symbol>();
     public static readonly IReadOnlyDictionary<string, Symbol> QuotesMap = new Dictionary<string, Symbol>()
     {
-        { "'", QUOTE },
-        { "`", QUASIQUOTE},
-        { ",", UNQUOTE},
-        { ",@", UNQUOTE_SPLICING},
+        { "'", new QUOTE() },
+        { "`", new QUASIQUOTE() },
+        { ",", new UNQUOTE() },
+        { ",@", new UNQUOTE_SPLICING()},
     };
 
-
+    public record IF() : Symbol("if");
+    public record QUOTE() : Symbol("quote");
+    public record UNQUOTE() : Symbol("unquote");
+    public record DEFINE() : Symbol("define");
+    public record DEFINE_MACRO() : Symbol("define-macro");
+    public record LAMBDA() : Symbol("lambda");
+    public record CONS() : Symbol("cons");
+    public record SET() : Symbol("set!");
+    public record APPEND() : Symbol("append");
+    public record BEGIN() : Symbol("begin");
+    public record QUASIQUOTE() : Symbol("quasiquote");
+    public record UNQUOTE_SPLICING() : Symbol("unquote-splicing");
+    public record EOF() : Symbol("#<eof-object>");
+    
     /// <summary>
     /// Returns the interned symbol
     /// </summary>
@@ -30,6 +43,20 @@ public record Symbol(string Sym)
     /// <returns>the symbol instance</returns>
     public static Symbol FromString(string sym)
     {
+        if (sym == "if") return new IF();
+        if (sym == "quote") return new QUOTE();
+        if (sym == "define") return new DEFINE();
+        if (sym == "define-macro") return new DEFINE_MACRO();
+        if (sym == "lambda") return new LAMBDA(); 
+        if (sym == "unquote") return new UNQUOTE(); 
+        if (sym == "cons") return new UNQUOTE(); 
+        if (sym == "set!") return new UNQUOTE(); 
+        if (sym == "append") return new APPEND(); 
+        if (sym == "begin") return new BEGIN(); 
+        if (sym == "quasiquote") return new QUASIQUOTE();
+        if (sym == "unquote-splicing") return new UNQUOTE_SPLICING();
+        if (sym =="#<eof-object>") return new EOF();
+        
         if (!Table.TryGetValue(sym, out _))
         {
             Table[sym] = new Symbol(sym);
@@ -38,19 +65,6 @@ public record Symbol(string Sym)
         return Table[sym];
     }
 
-    public static Symbol IF => FromString("if");
-    public static Symbol QUOTE => FromString("quote");
-    public static Symbol SET => FromString("set!");
-    public static Symbol DEFINE => FromString("define");
-    public static Symbol LAMBDA => FromString("lambda");
-    public static Symbol BEGIN => FromString("begin");
-    public static Symbol DEFINE_MACRO => FromString("define-macro");
-    public static Symbol QUASIQUOTE => FromString("quasiquote");
-    public static Symbol UNQUOTE => FromString("unquote");
-    public static Symbol UNQUOTE_SPLICING => FromString("unquote-splicing");
-    public static Symbol EOF => FromString("#<eof-object>");
-    public static Symbol APPEND => FromString("append");
-    public static Symbol CONS => FromString("cons");
 
     public override string ToString() => $"'{Sym}";
 }

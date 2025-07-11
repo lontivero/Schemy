@@ -7,27 +7,17 @@ using System;
 
 public class None
 {
-    public static readonly None Instance = new None();
+    public static readonly None Instance = new();
 }
 
-class AssertionFailedError : Exception
-{
-    public AssertionFailedError(string msg) : base(msg)
-    {
-    }
-}
+class AssertionFailedError(string msg) : Exception(msg);
 
-class SyntaxError : Exception
-{
-    public SyntaxError(string msg) : base(msg)
-    {
-    }
-}
+class SyntaxError(string msg) : Exception(msg);
 
 /// <summary>
 /// Poor man's discreminated union
 /// </summary>
-public class Union<T1, T2>
+public class Union<T1, T2> where T1: notnull where T2: notnull 
 {
     private readonly object _data;
     public Union(T1 data)

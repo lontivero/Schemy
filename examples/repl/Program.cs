@@ -34,7 +34,7 @@ namespace Schemy
                     "-----------------------------------------------",
                 };
 
-                interpreter.REPL(Console.In, Console.Out, "Schemy> ", headers);
+                interpreter.Repl(Console.In, Console.Out, "Schemy> ", headers);
             }
         }
     }

@@ -10,7 +10,7 @@ public static class Program
     /// </summary>
     private static void Initialize(Interpreter interpreter)
     {
-        string initFile = ".init.ss";
+        var initFile = ".init.ss";
         if (File.Exists(initFile))
         {
             using var reader = new StreamReader(initFile);
@@ -52,7 +52,7 @@ public static class Program
                 "-----------------------------------------------",
             };
 
-            interpreter.REPL(Console.In, Console.Out, "Schemy> ", headers);
+            interpreter.Repl(Console.In, Console.Out, "Schemy> ", headers);
         }
     }
 }

@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+using System.Diagnostics.CodeAnalysis;
+
 namespace Schemy;
 
 using System.Collections.Generic;
@@ -41,7 +43,7 @@ public class Environment(IDictionary<Symbol, object> env, Environment? outer)
     /// </summary>
     /// <param name="val">The value of the symbol to find</param>
     /// <returns>if the symbol's value could be found</returns>
-    private bool TryGetValue(Symbol sym, out object? val)
+    private bool TryGetValue(Symbol sym, [NotNullWhen(true)]out object? val)
     {
         var env = TryFindContainingEnvironment(sym);
         if (env != null)

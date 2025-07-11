@@ -20,7 +20,6 @@ public class Interpreter
     /// Initializes a new instance of the <see cref="Interpreter"/> class.
     /// </summary>
     /// <param name="environmentInitializers">Array of environment initializers</param>
-    /// <param name="fsAccessor">The file system accessor</param>
     public Interpreter(IEnumerable<CreateSymbolTableDelegate>? environmentInitializers = null)
     {
         // populate an empty environment for the initializer to potentially work with
@@ -30,7 +29,7 @@ public class Interpreter
         environmentInitializers ??= new List<CreateSymbolTableDelegate>();
         environmentInitializers = new CreateSymbolTableDelegate[] { Builtins.CreateBuiltins }.Concat(environmentInitializers);
 
-        foreach (CreateSymbolTableDelegate initializer in environmentInitializers)
+        foreach (var initializer in environmentInitializers)
         {
             environment = new Environment(initializer(this), environment);
         }
@@ -44,18 +43,16 @@ public class Interpreter
     private IEnumerable<TextReader> GetInitializeFiles()
     {
         using (Stream stream = File.OpenRead("init.ss"))
-        using (StreamReader reader = new StreamReader(stream))
+        using (var reader = new StreamReader(stream))
         {
             yield return reader;
         }
 
-        string initFile = Path.Combine(".init.ss");
+        var initFile = Path.Combine(".init.ss");
         if (File.Exists(initFile))
         {
-            using (var reader = new StreamReader(initFile))
-            {
-                yield return reader;
-            }
+            using var reader = new StreamReader(initFile);
+            yield return reader;
         }
     }
 
@@ -68,14 +65,14 @@ public class Interpreter
     /// <returns>the value of the last expression</returns>
     public EvaluationResult Evaluate(TextReader input)
     {
-        InPort port = new InPort(input);
-        object res = null;
+        var port = new InPort(input);
+        object? res = null;
         while (true)
         {
             try
             {
-                var expr = Expand(Read(port), environment, macroTable, true);
-                if (Symbol.EOF.Equals(expr))
+                var expr = Expand(Read(port), environment, macroTable);
+                if (expr is Symbol.EOF)
                 {
                     return new EvaluationResult(null, res);
                 }
@@ -96,7 +93,7 @@ public class Interpreter
     /// <param name="output">the output target</param>
     /// <param name="prompt">a string prompt to be printed before each evaluation</param>
     /// <param name="headers">a head text to be printed at the beginning of the REPL</param>
-    public void REPL(TextReader input, TextWriter output, string prompt = null, string[] headers = null)
+    public void Repl(TextReader input, TextWriter output, string? prompt = null, string[]? headers = null)
     {
         InPort port = new InPort(input);
 
@@ -108,20 +105,20 @@ public class Interpreter
             }
         }
 
-        object res = null;
+        object? result;
         while (true)
         {
             try
             {
                 if (!string.IsNullOrEmpty(prompt) && output != null) output.Write(prompt);
-                var expr = Expand(Read(port), environment, macroTable, true);
-                if (Symbol.EOF.Equals(expr))
+                var expr = Expand(Read(port), environment, macroTable);
+                if (expr is Symbol.EOF)
                 {
                     return;
                 }
 
-                res = EvaluateExpression(expr, environment);
-                if (output != null) output.WriteLine(Utils.PrintExpr(res));
+                result = EvaluateExpression(expr, environment);
+                output?.WriteLine(Utils.PrintExpr(result));
             }
             catch (Exception e)
             {
@@ -131,44 +128,31 @@ public class Interpreter
     }
 
     /// <summary>
-    /// Defines a global symbol
-    /// </summary>
-    /// <param name="sym">the symbol</param>
-    /// <param name="val">the associated value</param>
-    public void DefineGlobal(Symbol sym, object val)
-    {
-        environment[sym] = val;
-    }
-
-    /// <summary>
     /// Reads an S-expression from the input source
     /// </summary>
-    public static object Read(InPort port)
+    private static object Read(InPort port)
     {
-        Func<object, object> readAhead = null;
-        readAhead = token =>
+        object ReadAhead(object token)
         {
-            Symbol quote;
-            if (Equals(token, Symbol.EOF))
+            if (token is Symbol.EOF)
             {
                 throw new SyntaxError("unexpected EOF");
             }
 
-            if (token is string)
+            if (token is string tokenStr)
             {
-                string tokenStr = (string)token;
                 if (tokenStr == "(")
                 {
-                    var L = new List<object>();
+                    var list = new List<object>();
                     while (true)
                     {
                         token = port.NextToken();
-                        if (token is string && (string)token == ")")
+                        if (token is ")")
                         {
-                            return L;
+                            return list;
                         }
 
-                        L.Add(readAhead(token));
+                        list.Add(ReadAhead(token));
                     }
                 }
 
@@ -177,20 +161,20 @@ public class Interpreter
                     throw new SyntaxError("unexpected )");
                 }
 
-                if (Symbol.QuotesMap.TryGetValue(tokenStr, out quote))
+                if (Symbol.QuotesMap.TryGetValue(tokenStr, out var quote))
                 {
-                    object quoted = Read(port);
-                    return new List<object> { quote, quoted };
+                    var quoted = Read(port);
+                    return new List<object> {quote, quoted};
                 }
 
                 return ParseAtom(tokenStr);
             }
 
             throw new SyntaxError("unexpected token: " + token);
-        };
+        }
 
         var token1 = port.NextToken();
-        return Symbol.EOF.Equals(token1) ? Symbol.EOF : readAhead(token1);
+        return token1 is Symbol.EOF ? new Symbol.EOF() : ReadAhead(token1);
     }
 
     /// <summary>
@@ -201,27 +185,24 @@ public class Interpreter
     /// <param name="macroTable">the macro definition table</param>
     /// <param name="isTopLevel">whether the current expansion is at the top level</param>
     /// <returns>the s-expression after validation and expansion</returns>
-    public static object Expand(object expression, Environment env, Dictionary<Symbol, Procedure> macroTable, bool isTopLevel = true)
+    private static object Expand(object expression, Environment env, Dictionary<Symbol, Procedure> macroTable, bool isTopLevel = true)
     {
-        Procedure procedure = null;
-        Func<object, bool, object> expand = null;
-        expand = (x, topLevel) =>
+        object Func(object x, bool topLevel)
         {
-            if (!(x is List<object>))
+            if (x is not List<object> xs)
             {
                 return x;
             }
 
-            List<object> xs = (List<object>)x;
             Utils.CheckSyntax(xs, xs.Count > 0);
 
-            if (Symbol.QUOTE.Equals(xs[0]))
+            if (xs[0] is Symbol.QUOTE)
             {
                 Utils.CheckSyntax(xs, xs.Count == 2);
                 return xs;
             }
 
-            if (Symbol.IF.Equals(xs[0]))
+            if (xs[0] is Symbol.IF)
             {
                 if (xs.Count == 3)
                 {
@@ -229,91 +210,83 @@ public class Interpreter
                 }
 
                 Utils.CheckSyntax(xs, xs.Count == 4);
-                return xs.Select(expr => expand(expr, false)).ToList();
+                return xs.Select<object, object>(expr => Func(expr, false)).ToList();
             }
 
-            if (Symbol.SET.Equals(xs[0]))
+            if (xs[0] is Symbol.SET)
             {
                 Utils.CheckSyntax(xs, xs.Count == 3);
                 Utils.CheckSyntax(xs, xs[1] is Symbol, "can only set! a symbol");
-                return new List<object> { Symbol.SET, xs[1], expand(xs[2], false) };
+                return new List<object> {new Symbol.SET(), xs[1], Func(xs[2], false)};
             }
 
-            if (Symbol.DEFINE.Equals(xs[0]) || Symbol.DEFINE_MACRO.Equals(xs[0]))
+            if (xs[0] is Symbol.DEFINE or Symbol.DEFINE_MACRO)
             {
                 Utils.CheckSyntax(xs, xs.Count >= 3);
-                Symbol def = (Symbol)xs[0];
-                object v = xs[1]; // sym or (sym+)
-                List<object> body = xs.Skip(2).ToList(); // expr or expr+
-                if (v is List<object>) // defining function: ([define|define-macro] (f arg ...) body)
+                var def = (Symbol) xs[0];
+                var v = xs[1]; // sym or (sym+)
+                var body = xs.Skip(2).ToList(); // expr or expr+
+                if (v is List<object> list) // defining function: ([define|define-macro] (f arg ...) body)
                 {
-                    var args = (List<object>)v;
-                    Utils.CheckSyntax(xs, args.Count > 0);
-                    var f = args[0];
-                    var @params = args.Skip(1).ToList();
-                    return expand(new List<object> { def, f, Enumerable.Concat(new object[] { Symbol.LAMBDA, @params }, body).ToList() }, false);
+                    Utils.CheckSyntax(xs, list.Count > 0);
+                    var f = list[0];
+                    var @params = list.Skip(1).ToList();
+                    return Func(new List<object> {def, f, Enumerable.Concat([new Symbol.LAMBDA(), @params], body).ToList()}, false);
                 }
 
                 // defining variable: ([define|define-macro] id expr)
                 Utils.CheckSyntax(xs, xs.Count == 3);
                 Utils.CheckSyntax(xs, v is Symbol);
-                var expr = expand(xs[2], false);
-                if (Symbol.DEFINE_MACRO.Equals(def))
+                var expr = Func(xs[2], false);
+                if (def is Symbol.DEFINE_MACRO)
                 {
                     Utils.CheckSyntax(xs, topLevel, "define-macro is only allowed at the top level");
                     var proc = EvaluateExpression(expr, env);
                     Utils.CheckSyntax(xs, proc is Procedure, "macro must be a procedure");
-                    macroTable[(Symbol)v] = (Procedure)proc;
+                    macroTable[(Symbol) v] = (Procedure) proc;
                     return None.Instance;
                 }
 
                 // `define v expr`
-                return new List<object> { Symbol.DEFINE, v, expr /* after expansion */ };
+                return new List<object> {new Symbol.DEFINE(), v, expr /* after expansion */};
             }
 
-            if (Symbol.BEGIN.Equals(xs[0]))
+            if (xs[0] is Symbol.BEGIN)
             {
                 if (xs.Count == 1) return None.Instance; // (begin) => None
 
                 // use the same topLevel so that `define-macro` is also allowed in a top-level `begin`.
-                return xs.Select(expr => expand(expr, topLevel)).ToList();
+                return xs.Select<object, object>(expr => Func(expr, topLevel)).ToList();
             }
 
-            if (Symbol.LAMBDA.Equals(xs[0]))
+            if (xs[0] is Symbol.LAMBDA)
             {
                 Utils.CheckSyntax(xs, xs.Count >= 3);
                 var vars = xs[1];
-                Utils.CheckSyntax(xs, vars is Symbol || (vars is List<object> && ((List<object>)vars).All(v => v is Symbol)), "illigal lambda argument");
+                Utils.CheckSyntax(xs, vars is Symbol || (vars is List<object> && ((List<object>) vars).All(v => v is Symbol)), "illegal lambda argument");
 
-                object body;
-                if (xs.Count == 3)
-                {
-                    // (lambda (...) expr)
-                    body = xs[2];
-                }
-                else
-                {
-                    // (lambda (...) expr+
-                    body = Enumerable.Concat(new[] { Symbol.BEGIN }, xs.Skip(2)).ToList();
-                }
+                var body = xs.Count == 3 
+                    ? xs[2] // (lambda (...) expr)
+                    : Enumerable.Concat([new Symbol.BEGIN()], xs.Skip(2)).ToList(); // (lambda (...) expr+
 
-                return new List<object> { Symbol.LAMBDA, vars, expand(body, false) };
+                return new List<object> {new Symbol.LAMBDA(), vars, Func(body, false)};
             }
 
-            if (Symbol.QUASIQUOTE.Equals(xs[0]))
+            if (xs[0] is Symbol.QUASIQUOTE)
             {
                 Utils.CheckSyntax(xs, xs.Count == 2);
                 return ExpandQuasiquote(xs[1]);
             }
 
-            if (xs[0] is Symbol && macroTable.TryGetValue((Symbol)xs[0], out procedure))
+            if (xs[0] is Symbol && macroTable.TryGetValue((Symbol) xs[0], out var procedure))
             {
-                return expand(procedure.Call(xs.Skip(1).ToList()), topLevel);
+                return Func(procedure.Call(xs.Skip(1).ToList()), topLevel);
             }
 
-            return xs.Select(p => expand(p, false)).ToList();
-        };
-        return expand(expression, isTopLevel);
+            return xs.Select<object, object>(p => Func(p, false)).ToList();
+        }
+
+        return Func(expression, isTopLevel);
     }
 
     /// <summary>
@@ -326,129 +299,113 @@ public class Interpreter
     {
         while (true)
         {
-            if (expr is Symbol)
+            switch (expr)
             {
-                return env[(Symbol)expr];
-            }
+                case Symbol symbol:
+                    return env[symbol];
+                case List<object> and [Symbol.QUOTE, var quoted]:
+                    return quoted;
+                case List<object> and [Symbol.IF, var test, var conseq, var alt]:
+                {
+                    //Utils.CheckSyntax(list, list.Count == 4, "if expression requires exactly 3 arguments");
+                    expr = ConvertToBool(EvaluateExpression(test, env)) ? conseq : alt;
+                    break;
+                }
+                case List<object> and [Symbol.DEFINE, Symbol variable, var texpr]:
+                {
+                    expr = texpr;
+                    env[variable] = EvaluateExpression(expr, env);
+                    return None.Instance; // TODO: what's the return type of define?
+                }
+                case List<object> and [Symbol.SET, Symbol sym, var texpr]:
+                {
+                    var containingEnv = env.TryFindContainingEnvironment(sym);
+                    if (containingEnv == null)
+                    {
+                        throw new KeyNotFoundException("Symbol not defined: " + sym);
+                    }
 
-            if (!(expr is List<object>))
-            {
-                return expr; // is a constant literal
-            }
+                    containingEnv[sym] = EvaluateExpression(texpr, env);
+                    return None.Instance;
+                }
+                case List<object> and [Symbol.LAMBDA, var p, var body]:
+                {
+                    // Two lambda forms:
+                    // -    (lambda (arg ...) body): each arg is bound to a value
+                    // -    (lambda args body): args is bound to the parameter list
+                    Union<Symbol, List<Symbol>> parameters;
+                    parameters = p is Symbol sym
+                        ? new Union<Symbol, List<Symbol>>(sym) 
+                        : new Union<Symbol, List<Symbol>>(((List<object>) p).Cast<Symbol>().ToList());
 
-            List<object> exprList = (List<object>)expr;
-            if (Symbol.QUOTE.Equals(exprList[0]))
-            {
-                return exprList[1];
-            }
+                    return new Procedure(parameters, body, env);
+                }
+                case List<object> and [Symbol.BEGIN, .. var texprs]:
+                {
+                    foreach (var texpr in texprs[..^2]) // TODO: check this
+                    {
+                        EvaluateExpression(texpr, env);
+                    }
 
-            if (Symbol.IF.Equals(exprList[0]))
-            {
-                var test = exprList[1];
-                var conseq = exprList[2];
-                var alt = exprList[3];
-                expr = ConvertToBool(EvaluateExpression(test, env)) ? conseq : alt;
-            }
-            else if (Symbol.DEFINE.Equals(exprList[0]))
-            {
-                var variable = (Symbol)exprList[1];
-                expr = exprList[2];
-                env[variable] = EvaluateExpression(expr, env);
-                return None.Instance; // TODO: what's the return type of define?
-            }
-            else if (Symbol.SET.Equals(exprList[0]))
-            {
-                var sym = (Symbol)exprList[1];
-                var containingEnv = env.TryFindContainingEnvironment(sym);
-                if (containingEnv == null)
-                {
-                    throw new KeyNotFoundException("Symbol not defined: " + sym);
+                    expr = texprs[^1]; // tail call optimization
+                    break;
                 }
+                case List<object> list:
+                {
+                    // a procedure call
+                    var rawProc = EvaluateExpression(list[0], env);
+                    if (rawProc is not ICallable)
+                    {
+                        throw new InvalidCastException($"Object is not callable: {rawProc}");
+                    }
 
-                containingEnv[sym] = EvaluateExpression(exprList[2], env);
-                return None.Instance;
-            }
-            else if (Symbol.LAMBDA.Equals(exprList[0]))
-            {
-                // Two lambda forms:
-                // -    (lambda (arg ...) body): each arg is bound to a value
-                // -    (lambda args body): args is bound to the parameter list
-                Union<Symbol, List<Symbol>> parameters;
-                if (exprList[1] is Symbol)
-                {
-                    parameters = new Union<Symbol, List<Symbol>>((Symbol)exprList[1]);
-                }
-                else
-                {
-                    parameters = new Union<Symbol, List<Symbol>>(((List<object>)exprList[1]).Cast<Symbol>().ToList());
-                }
+                    var args = list.Skip(1).Select(a => EvaluateExpression(a, env)).ToList();
+                    if (rawProc is Procedure procedure)
+                    {
+                        // Tail call optimization - instead of evaluating the procedure here which grows the
+                        // stack by calling EvaluateExpression, we update the `expr` and `env` to be the
+                        // body and the (params, args), and loop the evaluation from here.
+                        expr = procedure.Body;
+                        env = Environment.FromVariablesAndValues(procedure.Parameters, args, procedure.Env);
+                    }
+                    else if (rawProc is NativeProcedure nativeProcedure)
+                    {
+                        return nativeProcedure.Call(args);
+                    }
+                    else
+                    {
+                        throw new InvalidOperationException("unexpected implementation of ICallable: " +
+                                                            rawProc.GetType().Name);
+                    }
 
-                return new Procedure(parameters, exprList[2], env);
-            }
-            else if (Symbol.BEGIN.Equals(exprList[0]))
-            {
-                for (int i = 1; i < exprList.Count - 1 /* don't eval last expr yet */; i++)
-                {
-                    EvaluateExpression(exprList[i], env);
+                    break;
                 }
-
-                expr = exprList[exprList.Count - 1]; // tail call optimization
-            }
-            else
-            {
-                // a procedure call
-                var rawProc = EvaluateExpression(exprList[0], env);
-                if (!(rawProc is ICallable))
-                {
-                    throw new InvalidCastException(string.Format("Object is not callable: {0}", rawProc));
-                }
-
-                var args = exprList.Skip(1).Select(a => EvaluateExpression(a, env)).ToList();
-                if (rawProc is Procedure)
-                {
-                    // Tail call optimization - instead of evaluating the procedure here which grows the
-                    // stack by calling EvaluateExpression, we update the `expr` and `env` to be the
-                    // body and the (params, args), and loop the evaluation from here.
-                    var proc = (Procedure)rawProc;
-                    expr = proc.Body;
-                    env = Environment.FromVariablesAndValues(proc.Parameters, args, proc.Env);
-                }
-                else if (rawProc is NativeProcedure)
-                {
-                    return ((NativeProcedure)rawProc).Call(args);
-                }
-                else
-                {
-                    throw new InvalidOperationException("unexpected implementation of ICallable: " + rawProc.GetType().Name);
-                }
+                default:
+                    return expr; // is a constant literal
             }
         }
     }
 
-    private static bool IsPair(object x)
-    {
-        return x is List<object> && ((List<object>)x).Count > 0;
-    }
+    private static bool IsPair(object x) => x is List<object> {Count: > 0};
 
     private static object ExpandQuasiquote(object x)
     {
-        if (!IsPair(x)) return new List<object> { Symbol.QUOTE, x };
+        if (!IsPair(x)) return new List<object> { new Symbol.QUOTE(), x };
         var xs = (List<object>)x;
-        Utils.CheckSyntax(xs, !Symbol.UNQUOTE_SPLICING.Equals(xs[0]), "Cannot splice");
-        if (Symbol.UNQUOTE.Equals(xs[0]))
+        Utils.CheckSyntax(xs, xs[0] is not Symbol.UNQUOTE_SPLICING, "Cannot splice");
+        if (xs[0] is Symbol.UNQUOTE)
         {
             Utils.CheckSyntax(xs, xs.Count == 2);
             return xs[1];
         }
 
-        if (IsPair(xs[0]) && Symbol.UNQUOTE_SPLICING.Equals(((List<object>)xs[0])[0]))
+        if (IsPair(xs[0]) && xs[0] is List<object> xs0 && xs0[0] is Symbol.UNQUOTE_SPLICING)
         {
-            var x0 = (List<object>)xs[0];
-            Utils.CheckSyntax(x0, x0.Count == 2);
-            return new List<object> { Symbol.APPEND, x0[1], ExpandQuasiquote(xs.Skip(1).ToList()) };
+            Utils.CheckSyntax(xs0, xs0.Count == 2);
+            return new List<object> {new  Symbol.APPEND(), xs0[1], ExpandQuasiquote(xs.Skip(1).ToList()) };
         }
 
-        return new List<object> { Symbol.CONS, ExpandQuasiquote(xs[0]), ExpandQuasiquote(xs.Skip(1).ToList()) };
+        return new List<object> { new Symbol.CONS(), ExpandQuasiquote(xs[0]), ExpandQuasiquote(xs.Skip(1).ToList()) };
     }
 
     private static object ParseAtom(string token)
@@ -483,26 +440,15 @@ public class Interpreter
         return Symbol.FromString(token); // a symbol
     }
 
-    private static bool ConvertToBool(object val)
-    {
-        if (val is bool) return (bool)val;
-        return true;
-    }
+    private static bool ConvertToBool(object val) => (val is not bool b) || b;
 
     public record struct EvaluationResult(Exception? Error, object? Result);
 
-    public class InPort
+    public class InPort(TextReader file)
     {
         private const string tokenizer = @"^\s*(,@|[('`,)]|""(?:[\\].|[^\\""])*""|;.*|[^\s('""`,;)]*)(.*)";
 
-        private TextReader file;
-        private string line;
-
-        public InPort(TextReader file)
-        {
-            this.file = file;
-            line = string.Empty;
-        }
+        private string? line = string.Empty;
 
         /// <summary>
         /// Parses and returns the next token. Returns <see cref="Symbol.EOF"/> if there's no more content to read.
@@ -523,7 +469,7 @@ public class Interpreter
 
                 if (line == null)
                 {
-                    return Symbol.EOF;
+                    return new Symbol.EOF();
                 }
 
                 var res = Regex.Match(line, tokenizer);

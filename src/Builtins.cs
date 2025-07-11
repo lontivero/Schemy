@@ -1,6 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+using System.Reflection;
+using System.Runtime.InteropServices.JavaScript;
+
 namespace Schemy;
 
 using System;
@@ -19,6 +22,7 @@ public static class Builtins
             [Symbol.FromString("-")] = new NativeProcedure(Utils.MakeVariadic(Minus), "-"),
             [Symbol.FromString("*")] = new NativeProcedure(Utils.MakeVariadic(Multiply), "*"),
             [Symbol.FromString("/")] = new NativeProcedure(Utils.MakeVariadic(Divide), "/"),
+            [Symbol.FromString("%")] = new NativeProcedure(Utils.MakeVariadic(Modulus), "%"),
             [Symbol.FromString("=")] = NativeProcedure.Create<double, double, bool>((x, y) => Math.Abs(x - y) < 0.0000000000001, "="),
             [Symbol.FromString("<")] = NativeProcedure.Create<double, double, bool>((x, y) => x < y, "<"),
             [Symbol.FromString("<=")] = NativeProcedure.Create<double, double, bool>((x, y) => x <= y, "<="),
@@ -40,12 +44,15 @@ public static class Builtins
             [Symbol.FromString("length")] = NativeProcedure.Create<List<object>, int>(list => list.Count, "length"),
             [Symbol.FromString("car")] = NativeProcedure.Create<List<object>, object>(args => args[0], "car"),
             [Symbol.FromString("cdr")] = NativeProcedure.Create<List<object>, List<object>>(args => args.Skip(1).ToList(), "cdr"),
-            [Symbol.CONS] = NativeProcedure.Create<object, List<object>, List<object>>((x, ys) => Enumerable.Concat([x], ys).ToList(), "cons"),
+            [Symbol.FromString("cons")] = NativeProcedure.Create<object, List<object>, List<object>>((x, ys) => Enumerable.Concat([x], ys).ToList(), "cons"),
             [Symbol.FromString("not")] = NativeProcedure.Create<bool, bool>(x => !x, "not"),
-            [Symbol.APPEND] = NativeProcedure.Create<List<object>, List<object>, List<object>>((l1, l2) => l1.Concat(l2).ToList(), "append"),
-            [Symbol.FromString("null")] = NativeProcedure.Create(object? () => null, "null"),
+            [Symbol.FromString("append")] = NativeProcedure.Create<List<object>, List<object>, List<object>>((l1, l2) => l1.Concat(l2).ToList(), "append"),
+            [Symbol.FromString("null")] = NativeProcedure.Create(() => (object)null!, "null"),
             [Symbol.FromString("null?")] = NativeProcedure.Create<object, bool>(x => x is List<object> {Count: 0}, "null?"),
             [Symbol.FromString("assert")] = new NativeProcedure(AssertImpl, "assert"),
+            [Symbol.FromString("symbol->string")] = NativeProcedure.Create<Symbol, string>(s=> s.Sym),
+            [Symbol.FromString("__invoke_getter")] = NativeProcedure.Create<string, object, object>((method, instance)=>
+                instance.GetType().InvokeMember(method, BindingFlags.GetProperty | BindingFlags.Instance | BindingFlags.Public | BindingFlags.IgnoreCase, null, instance, [])!),
         };
 
     private static List<object> RangeImpl(List<object> args)
@@ -98,7 +105,7 @@ public static class Builtins
         return None.Instance;
     }
 
-    public static bool EqualImpl(object x, object y)
+    private static bool EqualImpl(object? x, object? y)
     {
         if (Equals(x, y)) return true;
         if (x == null || y == null) return false;
@@ -135,5 +142,11 @@ public static class Builtins
     {
         if (x is int i && y is int j) return i / j;
         return (double)Convert.ChangeType(x, typeof(double)) / (double)Convert.ChangeType(y, typeof(double));
+    }
+    
+    private static object Modulus(object x, object y)
+    {
+        if (x is int i && y is int j) return i % j;
+        throw new InvalidOperationException("Modulus operation is only applicable to integers");
     }
 }

@@ -45,7 +45,7 @@ public record Procedure(Union<Symbol, List<Symbol>> Parameters, object Body, Env
     /// Prints the implementation of the function.
     /// </summary>
     public override string ToString() => 
-        Utils.PrintExpr(new List<object> { Symbol.LAMBDA, Parameters.Use(object (sym) => sym, syms => syms.Cast<object>().ToList()), Body });
+        Utils.PrintExpr(new List<object> { new Symbol.LAMBDA(), Parameters.Use(object (sym) => sym, syms => syms.Cast<object>().ToList()), Body });
 }
 
 /// <summary>
@@ -61,7 +61,7 @@ public record NativeProcedure(Func<List<object>, object> func, string? name = nu
     /// implementation strongly typed.
     /// </summary>
     /// <see cref="Create{T1, T2}(Func{T1, T2}, string)"/>
-    public static NativeProcedure Create<T1, T2, T3, T4, T5, T6, T7, T8>(Func<T1, T2, T3, T4, T5, T6, T7, T8> func, string? name = null)
+    public static NativeProcedure Create<T1, T2, T3, T4, T5, T6, T7, T8>(Func<T1, T2, T3, T4, T5, T6, T7, T8> func, string? name = null) where T8 : notnull
     {
         return new NativeProcedure(args =>
         {
@@ -83,7 +83,7 @@ public record NativeProcedure(Func<List<object>, object> func, string? name = nu
     /// implementation strongly typed.
     /// </summary>
     /// <see cref="Create{T1, T2}(Func{T1, T2}, string)"/>
-    public static NativeProcedure Create<T1, T2, T3, T4, T5>(Func<T1, T2, T3, T4, T5> func, string name = null)
+    public static NativeProcedure Create<T1, T2, T3, T4, T5>(Func<T1, T2, T3, T4, T5> func, string? name = null) where T5: notnull
     {
         return new NativeProcedure(args =>
         {
@@ -101,7 +101,7 @@ public record NativeProcedure(Func<List<object>, object> func, string? name = nu
     /// implementation strongly typed.
     /// </summary>
     /// <see cref="Create{T1, T2}(Func{T1, T2}, string)"/>
-    public static NativeProcedure Create<T1, T2, T3, T4>(Func<T1, T2, T3, T4> func, string name = null)
+    public static NativeProcedure Create<T1, T2, T3, T4>(Func<T1, T2, T3, T4> func, string? name = null) where T4: notnull
     {
         return new NativeProcedure(args =>
         {
@@ -118,7 +118,7 @@ public record NativeProcedure(Func<List<object>, object> func, string? name = nu
     /// implementation strongly typed.
     /// </summary>
     /// <see cref="Create{T1, T2}(Func{T1, T2}, string)"/>
-    public static NativeProcedure Create<T1, T2, T3>(Func<T1, T2, T3> func, string name = null)
+    public static NativeProcedure Create<T1, T2, T3>(Func<T1, T2, T3> func, string? name = null) where T3: notnull
     {
         return new NativeProcedure(args =>
         {
@@ -135,7 +135,7 @@ public record NativeProcedure(Func<List<object>, object> func, string? name = nu
     /// <typeparam name="T2">The type of the 2nd argument</typeparam>
     /// <param name="func">The function implementation</param>
     /// <param name="name">The name of the function</param>
-    public static NativeProcedure Create<T1, T2>(Func<T1, T2> func, string name = null)
+    public static NativeProcedure Create<T1, T2>(Func<T1, T2> func, string? name = null) where T2: notnull
     {
         return new NativeProcedure(args =>
         {
@@ -149,7 +149,7 @@ public record NativeProcedure(Func<List<object>, object> func, string? name = nu
     /// implementation strongly typed.
     /// </summary>
     /// <see cref="Create{T1, T2}(Func{T1, T2}, string)"/>
-    public static NativeProcedure Create<T1>(Func<T1> func, string name = null)
+    public static NativeProcedure Create<T1>(Func<T1> func, string? name = null) where T1: notnull
     {
         return new NativeProcedure(args =>
         {
@@ -164,6 +164,6 @@ public record NativeProcedure(Func<List<object>, object> func, string? name = nu
     /// <returns>the string representation</returns>
     public override string ToString()
     {
-        return string.Format("#<NativeProcedure:{0}>", string.IsNullOrEmpty(name) ? "noname" : name);
+        return $"#<NativeProcedure:{(string.IsNullOrEmpty(name) ? "noname" : name)}>";
     }
 }
