@@ -1,6 +1,3 @@
-// Copyright (c) Microsoft Corporation. All rights reserved.
-// Licensed under the MIT License.
-
 namespace Schemy;
 
 using System.Collections.Generic;
@@ -11,9 +8,25 @@ using System.Collections.Generic;
 /// <remarks>
 /// Symbols are interned so that symbols with the same name are actually of the same symbol object instance.
 /// </remarks>
-public record Symbol(string Sym) 
+public record Symbol(string Sym)
 {
-    private static readonly IDictionary<string, Symbol> Table = new Dictionary<string, Symbol>();
+    private static readonly IDictionary<string, Symbol> Table = new Dictionary<string, Symbol>
+    {
+        {"if", new IF()},
+        {"quote", new QUOTE()},
+        {"define", new DEFINE()},
+        {"define-macro", new DEFINE_MACRO()},
+        {"lambda", new LAMBDA()},
+        {"unquote", new UNQUOTE()},
+        {"cons", new CONS()},
+        {"set!", new SET()},
+        {"append", new APPEND()},
+        {"begin", new BEGIN()},
+        {"quasiquote", new QUASIQUOTE()},
+        {"unquote-splicing", new UNQUOTE_SPLICING()},
+        {"#<eof-object>", new EOF()},
+    };
+        
     public static readonly IReadOnlyDictionary<string, Symbol> QuotesMap = new Dictionary<string, Symbol>()
     {
         { "'", new QUOTE() },
@@ -43,20 +56,6 @@ public record Symbol(string Sym)
     /// <returns>the symbol instance</returns>
     public static Symbol FromString(string sym)
     {
-        if (sym == "if") return new IF();
-        if (sym == "quote") return new QUOTE();
-        if (sym == "define") return new DEFINE();
-        if (sym == "define-macro") return new DEFINE_MACRO();
-        if (sym == "lambda") return new LAMBDA(); 
-        if (sym == "unquote") return new UNQUOTE(); 
-        if (sym == "cons") return new UNQUOTE(); 
-        if (sym == "set!") return new UNQUOTE(); 
-        if (sym == "append") return new APPEND(); 
-        if (sym == "begin") return new BEGIN(); 
-        if (sym == "quasiquote") return new QUASIQUOTE();
-        if (sym == "unquote-splicing") return new UNQUOTE_SPLICING();
-        if (sym =="#<eof-object>") return new EOF();
-        
         if (!Table.TryGetValue(sym, out _))
         {
             Table[sym] = new Symbol(sym);

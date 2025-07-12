@@ -1,6 +1,3 @@
-// Copyright (c) Microsoft Corporation. All rights reserved.
-// Licensed under the MIT License.
-
 namespace Schemy
 {
     using System;
@@ -26,15 +23,7 @@ namespace Schemy
             {
                 // starts the REPL
                 var interpreter = new Interpreter();
-                var headers = new[]
-                {
-                    "-----------------------------------------------",
-                    "| Schemy - Scheme as a Configuration Language |",
-                    "| Press Ctrl-C to exit                        |",
-                    "-----------------------------------------------",
-                };
-
-                interpreter.Repl(Console.In, Console.Out, "Schemy> ", headers);
+                interpreter.Repl(Console.In, Console.Out, "Schemy> ");
             }
         }
     }
